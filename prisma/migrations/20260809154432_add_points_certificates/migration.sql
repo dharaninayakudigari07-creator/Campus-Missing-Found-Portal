@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN     "certificates" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "points" INTEGER NOT NULL DEFAULT 0;

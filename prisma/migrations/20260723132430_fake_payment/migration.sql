@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Item" ADD COLUMN     "aiScore" DOUBLE PRECISION DEFAULT 0;

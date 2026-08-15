@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id         Int      @id @default(autoincrement())
+  name       String
+  email      String   @unique
+  studentId  String?  @unique
+  password   String
+  createdAt  DateTime @default(now())
+  role       String   @default("student")
+  department String?
+  phone      String?
+
+  points       Int @default(0)
+  certificates Int @default(0)
+
+  items   Item[]
+  reports Report[]
+}
+
+model Item {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String
+  category    String
+  location    String
+  status      String   @default("LOST")
+  image       String?
+  createdAt   DateTime @default(now())
+
+  userId Int
+
+  latitude  Float?
+  longitude Float?
+
+  reward     Int     @default(0)
+  rewardPaid Boolean @default(false)
+
+  aiScore Float? @default(0)
+
+  claimApproved Boolean @default(false)
+
+  user    User     @relation(fields: [userId], references: [id])
+  reports Report[]
+}
+
+model Report {
+  id        Int      @id @default(autoincrement())
+  message   String
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+
+  userId Int
+  itemId Int
+
+  verified   Boolean   @default(false)
+  verifiedAt DateTime?
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+}
