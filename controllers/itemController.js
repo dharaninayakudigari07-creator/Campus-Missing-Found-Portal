@@ -1,5 +1,37 @@
 const prisma = require("../config/prisma");
 const { calculateMatch } = require("../services/aiMatcher");
+const cloudinary = require("../config/cloudinary");
+
+// =====================================================
+// HELPER: UPLOAD IMAGE TO CLOUDINARY
+// =====================================================
+
+const uploadToCloudinary = (file) => {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.buffer) {
+      return reject(
+        new Error("Image file buffer is missing.")
+      );
+    }
+
+    const stream =
+      cloudinary.uploader.upload_stream(
+        {
+          folder: "campus-missing-found",
+          resource_type: "image",
+        },
+        (error, result) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve(result);
+          }
+        }
+      );
+
+    stream.end(file.buffer);
+  });
+};
 
 // =====================================================
 // HELPER: GET BEST AI MATCH
@@ -30,6 +62,7 @@ const getBestMatch = async (item) => {
             not: item.id,
           },
         },
+
         orderBy: {
           createdAt: "desc",
         },
@@ -91,7 +124,6 @@ const getBestMatch = async (item) => {
   }
 };
 
-
 // =====================================================
 // CREATE ITEM
 // =====================================================
@@ -109,9 +141,9 @@ const createItem = async (req, res) => {
       reward,
     } = req.body;
 
-    const image = req.file
-      ? req.file.filename
-      : null;
+    // =================================================
+    // VALIDATION
+    // =================================================
 
     if (
       !title ||
@@ -143,13 +175,68 @@ const createItem = async (req, res) => {
       });
     }
 
+    // =================================================
+    // CLOUDINARY IMAGE UPLOAD
+    // =================================================
+
+    let image = null;
+
+    if (req.file) {
+      try {
+        const cloudinaryResult =
+          await uploadToCloudinary(req.file);
+
+        image =
+          cloudinaryResult.secure_url;
+
+        console.log(
+          "========================================"
+        );
+
+        console.log(
+          "CLOUDINARY UPLOAD SUCCESS"
+        );
+
+        console.log(
+          "IMAGE URL:",
+          image
+        );
+
+        console.log(
+          "========================================"
+        );
+      } catch (uploadError) {
+        console.error(
+          "CLOUDINARY UPLOAD ERROR:",
+          uploadError
+        );
+
+        return res.status(500).json({
+          success: false,
+          message:
+            "Image upload failed.",
+          error: uploadError.message,
+        });
+      }
+    }
+
+    // =================================================
+    // CREATE ITEM
+    // =================================================
+
     const item =
       await prisma.item.create({
         data: {
           title: title.trim(),
-          description: description.trim(),
-          category: category.trim(),
-          location: location.trim(),
+
+          description:
+            description.trim(),
+
+          category:
+            category.trim(),
+
+          location:
+            location.trim(),
 
           latitude:
             latitude !== undefined &&
@@ -176,9 +263,11 @@ const createItem = async (req, res) => {
 
           status: normalizedStatus,
 
+          // NEW IMAGES = CLOUDINARY URL
           image,
 
-          userId: Number(req.user.id),
+          userId:
+            Number(req.user.id),
         },
       });
 
@@ -195,10 +284,12 @@ const createItem = async (req, res) => {
       await prisma.item.findMany({
         where: {
           status: oppositeStatus,
+
           id: {
             not: item.id,
           },
         },
+
         orderBy: {
           createdAt: "desc",
         },
@@ -215,21 +306,42 @@ const createItem = async (req, res) => {
 
           return {
             id: existingItem.id,
-            title: existingItem.title,
-            description: existingItem.description,
-            category: existingItem.category,
-            location: existingItem.location,
-            latitude: existingItem.latitude,
-            longitude: existingItem.longitude,
-            status: existingItem.status,
-            image: existingItem.image,
-            reward: existingItem.reward,
+
+            title:
+              existingItem.title,
+
+            description:
+              existingItem.description,
+
+            category:
+              existingItem.category,
+
+            location:
+              existingItem.location,
+
+            latitude:
+              existingItem.latitude,
+
+            longitude:
+              existingItem.longitude,
+
+            status:
+              existingItem.status,
+
+            image:
+              existingItem.image,
+
+            reward:
+              existingItem.reward,
+
             similarity,
           };
         })
+
         .sort(
           (a, b) =>
-            b.similarity - a.similarity
+            b.similarity -
+            a.similarity
         );
 
     const bestMatch =
@@ -240,13 +352,22 @@ const createItem = async (req, res) => {
     const matchPercentage =
       bestMatch?.similarity || 0;
 
+    // =================================================
+    // RESPONSE
+    // =================================================
+
     return res.status(201).json({
       success: true,
+
       message:
         "Item Added Successfully",
+
       item,
+
       aiMatches,
+
       matchPercentage,
+
       bestMatch,
     });
   } catch (error) {
@@ -257,12 +378,15 @@ const createItem = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Server Error",
-      error: error.message,
+
+      message:
+        "Server Error",
+
+      error:
+        error.message,
     });
   }
 };
-
 
 // =====================================================
 // GET ALL ITEMS
@@ -297,13 +421,16 @@ const getItems = async (req, res) => {
 
     const itemsWithMatch =
       items.map((item) => {
+        // RETURNED ITEMS DON'T NEED MATCHING
         if (
           item.status !== "LOST" &&
           item.status !== "FOUND"
         ) {
           return {
             ...item,
+
             matchPercentage: 0,
+
             bestMatch: null,
           };
         }
@@ -313,7 +440,8 @@ const getItems = async (req, res) => {
             (existingItem) =>
               existingItem.status !==
                 item.status &&
-              existingItem.id !== item.id
+              existingItem.id !==
+                item.id
           );
 
         let bestScore = 0;
@@ -331,25 +459,38 @@ const getItems = async (req, res) => {
               bestScore = score;
 
               bestMatch = {
-                id: existingItem.id,
-                title: existingItem.title,
+                id:
+                  existingItem.id,
+
+                title:
+                  existingItem.title,
+
                 description:
                   existingItem.description,
+
                 category:
                   existingItem.category,
+
                 location:
                   existingItem.location,
+
                 latitude:
                   existingItem.latitude,
+
                 longitude:
                   existingItem.longitude,
+
                 status:
                   existingItem.status,
+
                 image:
                   existingItem.image,
+
                 reward:
                   existingItem.reward,
-                similarity: score,
+
+                similarity:
+                  score,
               };
             }
           }
@@ -357,7 +498,10 @@ const getItems = async (req, res) => {
 
         return {
           ...item,
-          matchPercentage: bestScore,
+
+          matchPercentage:
+            bestScore,
+
           bestMatch,
         };
       });
@@ -373,12 +517,15 @@ const getItems = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Server Error",
-      error: error.message,
+
+      message:
+        "Server Error",
+
+      error:
+        error.message,
     });
   }
 };
-
 
 // =====================================================
 // GET MY ITEMS
@@ -389,7 +536,8 @@ const getMyItems = async (req, res) => {
     const items =
       await prisma.item.findMany({
         where: {
-          userId: Number(req.user.id),
+          userId:
+            Number(req.user.id),
         },
 
         include: {
@@ -429,8 +577,10 @@ const getMyItems = async (req, res) => {
 
       itemsWithMatch.push({
         ...item,
+
         matchPercentage:
           matchData.matchPercentage,
+
         bestMatch:
           matchData.bestMatch,
       });
@@ -447,12 +597,15 @@ const getMyItems = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Server Error",
-      error: error.message,
+
+      message:
+        "Server Error",
+
+      error:
+        error.message,
     });
   }
 };
-
 
 // =====================================================
 // GET ITEM BY ID
@@ -465,6 +618,7 @@ const getItemById = async (req, res) => {
     if (!id) {
       return res.status(400).json({
         success: false,
+
         message:
           "Item ID is missing",
       });
@@ -475,6 +629,7 @@ const getItemById = async (req, res) => {
     if (!Number.isInteger(itemId)) {
       return res.status(400).json({
         success: false,
+
         message:
           "Invalid item ID",
       });
@@ -500,6 +655,7 @@ const getItemById = async (req, res) => {
     if (!item) {
       return res.status(404).json({
         success: false,
+
         message:
           "Item not found",
       });
@@ -525,12 +681,15 @@ const getItemById = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Server Error",
-      error: error.message,
+
+      message:
+        "Server Error",
+
+      error:
+        error.message,
     });
   }
 };
-
 
 // =====================================================
 // UPDATE ITEM
@@ -557,10 +716,15 @@ const updateItem = async (req, res) => {
     if (!Number.isInteger(itemId)) {
       return res.status(400).json({
         success: false,
+
         message:
           "Invalid item ID",
       });
     }
+
+    // =================================================
+    // DATA
+    // =================================================
 
     const data = {
       title,
@@ -594,6 +758,10 @@ const updateItem = async (req, res) => {
         rewardPaid === "true",
     };
 
+    // =================================================
+    // STATUS
+    // =================================================
+
     if (status) {
       data.status =
         String(status)
@@ -601,29 +769,73 @@ const updateItem = async (req, res) => {
           .toUpperCase();
     }
 
+    // =================================================
+    // NEW IMAGE
+    // =================================================
+
     if (req.file) {
-      data.image =
-        req.file.filename;
+      try {
+        const cloudinaryResult =
+          await uploadToCloudinary(
+            req.file
+          );
+
+        data.image =
+          cloudinaryResult.secure_url;
+
+        console.log(
+          "UPDATED IMAGE UPLOADED TO CLOUDINARY:",
+          data.image
+        );
+      } catch (uploadError) {
+        console.error(
+          "UPDATE IMAGE UPLOAD ERROR:",
+          uploadError
+        );
+
+        return res.status(500).json({
+          success: false,
+
+          message:
+            "Image upload failed.",
+
+          error:
+            uploadError.message,
+        });
+      }
     }
+
+    // =================================================
+    // UPDATE
+    // =================================================
 
     const item =
       await prisma.item.update({
         where: {
           id: itemId,
         },
+
         data,
       });
+
+    // =================================================
+    // AI MATCH
+    // =================================================
 
     const matchData =
       await getBestMatch(item);
 
     return res.status(200).json({
       success: true,
+
       message:
         "Item updated successfully",
+
       item,
+
       matchPercentage:
         matchData.matchPercentage,
+
       bestMatch:
         matchData.bestMatch,
     });
@@ -635,12 +847,15 @@ const updateItem = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Server Error",
-      error: error.message,
+
+      message:
+        "Server Error",
+
+      error:
+        error.message,
     });
   }
 };
-
 
 // =====================================================
 // DELETE ITEM
@@ -655,6 +870,7 @@ const deleteItem = async (req, res) => {
     if (!Number.isInteger(itemId)) {
       return res.status(400).json({
         success: false,
+
         message:
           "Invalid item ID",
       });
@@ -668,6 +884,7 @@ const deleteItem = async (req, res) => {
 
     return res.status(200).json({
       success: true,
+
       message:
         "Item deleted successfully",
     });
@@ -679,29 +896,24 @@ const deleteItem = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Server Error",
-      error: error.message,
+
+      message:
+        "Server Error",
+
+      error:
+        error.message,
     });
   }
 };
-
 
 // =====================================================
 // MARK ITEM AS RETURNED
 // =====================================================
 //
-// IMPORTANT:
-// When owner marks item as returned:
-//
 // 1. Item becomes RETURNED
 // 2. Approved claimant gets 10 points
 // 3. Certificate count is recalculated
 //    based on total points / 50
-//
-// Example:
-// 40 points -> +10 -> 50 points -> 1 certificate
-//
-// 90 points -> +10 -> 100 points -> 2 certificates
 //
 // =====================================================
 
@@ -710,11 +922,14 @@ const markReturned = async (req, res) => {
     const { id } = req.params;
 
     const itemId = Number(id);
-    const ownerId = Number(req.user.id);
+
+    const ownerId =
+      Number(req.user.id);
 
     if (!Number.isInteger(itemId)) {
       return res.status(400).json({
         success: false,
+
         message:
           "Invalid item ID",
       });
@@ -746,6 +961,7 @@ const markReturned = async (req, res) => {
     if (!item) {
       return res.status(404).json({
         success: false,
+
         message:
           "Item not found",
       });
@@ -761,6 +977,7 @@ const markReturned = async (req, res) => {
     ) {
       return res.status(403).json({
         success: false,
+
         message:
           "Only the item owner can mark this item as returned.",
       });
@@ -771,11 +988,13 @@ const markReturned = async (req, res) => {
     // =================================================
 
     if (
-      String(item.status).toUpperCase() ===
+      String(item.status)
+        .toUpperCase() ===
       "RETURNED"
     ) {
       return res.status(400).json({
         success: false,
+
         message:
           "This item has already been returned.",
       });
@@ -797,6 +1016,7 @@ const markReturned = async (req, res) => {
     if (!approvedClaim) {
       return res.status(400).json({
         success: false,
+
         message:
           "Please approve a claim before marking the item as returned.",
       });
@@ -812,10 +1032,11 @@ const markReturned = async (req, res) => {
       );
 
     // =================================================
-    // POINTS FOR SUCCESSFUL RECOVERY
+    // POINT SETTINGS
     // =================================================
 
     const POINTS_PER_RETURN = 10;
+
     const CERTIFICATE_THRESHOLD = 50;
 
     // =================================================
@@ -825,7 +1046,6 @@ const markReturned = async (req, res) => {
     const result =
       await prisma.$transaction(
         async (tx) => {
-
           // -------------------------------------------
           // MARK ITEM RETURNED
           // -------------------------------------------
@@ -837,7 +1057,8 @@ const markReturned = async (req, res) => {
               },
 
               data: {
-                status: "RETURNED",
+                status:
+                  "RETURNED",
               },
             });
 
@@ -859,7 +1080,7 @@ const markReturned = async (req, res) => {
           }
 
           // -------------------------------------------
-          // ADD 10 POINTS
+          // ADD POINTS
           // -------------------------------------------
 
           const oldPoints =
@@ -874,18 +1095,11 @@ const markReturned = async (req, res) => {
           // -------------------------------------------
           // CALCULATE CERTIFICATES
           // -------------------------------------------
-          //
-          // 0-49   => 0
-          // 50-99  => 1
-          // 100-149 => 2
-          // 150-199 => 3
-          //
-          // -------------------------------------------
 
           const newCertificates =
             Math.floor(
               newPoints /
-              CERTIFICATE_THRESHOLD
+                CERTIFICATE_THRESHOLD
             );
 
           // -------------------------------------------
@@ -899,7 +1113,8 @@ const markReturned = async (req, res) => {
               },
 
               data: {
-                points: newPoints,
+                points:
+                  newPoints,
 
                 certificates:
                   newCertificates,
@@ -907,25 +1122,26 @@ const markReturned = async (req, res) => {
             });
 
           // -------------------------------------------
-          // RETURN RESULT
+          // RETURN
           // -------------------------------------------
 
           return {
             returnedItem,
+
             updatedUser,
           };
         }
       );
 
     // =================================================
-    // RESPONSE
+    // RESPONSE DATA
     // =================================================
 
-    const pointsEarned =
-      10;
+    const pointsEarned = 10;
 
     const certificateEarned =
-      result.updatedUser.certificates >
+      result.updatedUser
+        .certificates >
       Math.floor(
         (result.updatedUser.points -
           pointsEarned) /
@@ -954,14 +1170,14 @@ const markReturned = async (req, res) => {
           result.updatedUser.points,
 
         certificates:
-          result.updatedUser.certificates,
+          result.updatedUser
+            .certificates,
       },
 
       pointsEarned,
 
       certificateEarned,
     });
-
   } catch (error) {
     console.error(
       "MARK RETURNED ERROR:",
@@ -970,13 +1186,15 @@ const markReturned = async (req, res) => {
 
     return res.status(500).json({
       success: false,
+
       message:
         "Unable to mark item as returned.",
-      error: error.message,
+
+      error:
+        error.message,
     });
   }
 };
-
 
 // =====================================================
 // EXPORTS
