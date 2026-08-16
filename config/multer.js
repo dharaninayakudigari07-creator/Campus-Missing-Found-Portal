@@ -1,7 +1,13 @@
 const multer = require("multer");
 
 // =====================================================
-// MEMORY STORAGE
+// MULTER MEMORY STORAGE
+// =====================================================
+// The image is temporarily stored in memory.
+// This allows the controller to access:
+// req.file.buffer
+//
+// The buffer is then uploaded directly to Cloudinary.
 // =====================================================
 
 const storage = multer.memoryStorage();
@@ -38,11 +44,11 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage,
 
-  limits: {
-    fileSize: 10 * 1024 * 1024,
-  },
-
   fileFilter,
+
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10 MB
+  },
 });
 
 module.exports = upload;
